@@ -78,39 +78,55 @@ MODLAR = {
 
 # Her mod için özet prompt şablonu ({baslik} ve {konusma} ile)
 MOD_PROMPTLARI = {
-    "genel": """Aşağıda "{baslik}" adlı Telegram sohbetindeki okunmamış mesajlar var.
-Genel bir özet çıkar:
-- Türkçe yaz, konu konu, kısa ve net.
-- Ne konuşulmuş, kim ne demiş.
-- Bana yöneltilen soru/rica/yapılacak iş varsa ayrıca belirt.
-- Önemli karar, tarih veya bağlantı kaybolmasın.
-- Selamlaşma/dolgu mesajlarını atla.
-- Markdown işareti (*, #, _, `) KULLANMA. Madde için "•" kullan.
+    "genel": """Aşağıda "{baslik}" sohbetindeki okunmamış mesajlar var. Türkçe, taranabilir bir özet çıkar.
+
+BİÇİM:
+1) İlk satır: **Özet:** ile tek cümlelik TL;DR (en kritik şey).
+2) Sonra konu konu: her bölüm başlığı **kalın**, altına "•" maddeler.
+3) Bana DOĞRUDAN yöneltilen soru/rica/iş varsa en sonda **Sana** başlığı altında topla (yoksa hiç yazma).
+
+KURALLAR:
+- SADECE mesajlarda geçen bilgiyi yaz. Emin olmadığını yazma, ASLA uydurma.
+- Tarih, saat, isim, rakam, link KAYBOLMASIN. Linkleri olduğu gibi koru.
+- Selamlaşma, şaka, "tamam/ok", dolgu mesajlarını atla.
+- Kısa ve net ol; en fazla ~10 madde, tekrar yok.
+- Vurgu için YALNIZCA **çift yıldız** kullan. #, _, ` , > İŞARETLERİNİ KULLANMA.
 
 Mesajlar:
 {konusma}""",
 
-    "bilgi": """Aşağıda "{baslik}" adlı Telegram sohbetindeki okunmamış mesajlar var.
+    "bilgi": """Aşağıda "{baslik}" sohbetindeki okunmamış mesajlar var.
 Görevin: SADECE faydalı/öğretici içeriği çıkarmak — bilgiler, ipuçları, taktikler,
-kaynaklar, linkler, öneriler, nasıl-yapılır türü bilgiler.
+kaynaklar, linkler, öneriler, nasıl-yapılır bilgileri.
+
+BİÇİM:
+- İlk satır: **Özet:** ile tek cümlelik en değerli çıkarım.
+- Faydalı şeyleri **kalın** alt başlıklar altında "•" madde madde, net ve uygulanabilir yaz.
+- Link/kaynak varsa en sonda **Kaynaklar** başlığı altında aynen koru.
+
+KURALLAR:
 - Sohbet/laf kalabalığı/selamlaşma/şaka kısmını TAMAMEN atla.
-- Faydalı şeyleri madde madde "•", net ve uygulanabilir yaz.
-- Link/kaynak varsa aynen koru.
-- Türkçe yaz. Markdown işareti (*, #, _, `) KULLANMA.
-- EĞER bu sohbette kayda değer hiçbir faydalı bilgi/ipucu yoksa, başka hiçbir şey
-  yazmadan SADECE şu tek kelimeyi yaz: BOŞ
+- SADECE mesajlarda geçeni yaz, ASLA uydurma. Türkçe yaz.
+- Vurgu için YALNIZCA **çift yıldız** kullan. #, _, ` , > KULLANMA.
+- EĞER kayda değer hiçbir faydalı bilgi yoksa, başka hiçbir şey yazmadan SADECE şunu yaz: BOŞ
 
 Mesajlar:
 {konusma}""",
 
-    "aksiyon": """Aşağıda "{baslik}" adlı Telegram sohbetindeki okunmamış mesajlar var.
+    "aksiyon": """Aşağıda "{baslik}" sohbetindeki okunmamış mesajlar var.
 Görevin: SADECE bana/bize düşen aksiyonları çıkarmak — yapılacak işler, son tarihler,
-randevular, formlar, başvurular, hatırlanması gereken şeyler, cevap bekleyen sorular.
-- Her birini madde madde "•" yaz; varsa tarih/saat/son başvuru gününü belirt.
+randevular, formlar, başvurular, hatırlanacak şeyler, cevap bekleyen sorular.
+
+BİÇİM (yalnız dolu olanı yaz):
+- **⏰ Tarihli** — günü/saati olan işler; her maddenin başına tarihi koy.
+- **📋 Tarihsiz** — yapılacak ama tarihi olmayan işler.
+Her madde "•" ile, kısa ve emir kipinde ("X'i gönder", "Y formunu doldur").
+
+KURALLAR:
 - Genel sohbeti, bilgi paylaşımını ve dolguyu atla.
-- Türkçe yaz. Markdown işareti (*, #, _, `) KULLANMA.
-- EĞER kayda değer hiçbir aksiyon/görev/tarih yoksa, başka hiçbir şey yazmadan
-  SADECE şu tek kelimeyi yaz: BOŞ
+- SADECE mesajlarda geçeni yaz, ASLA uydurma. Türkçe yaz.
+- Vurgu için YALNIZCA **çift yıldız** kullan. #, _, ` , > KULLANMA.
+- EĞER kayda değer hiçbir aksiyon/görev/tarih yoksa, başka hiçbir şey yazmadan SADECE şunu yaz: BOŞ
 
 Mesajlar:
 {konusma}""",
@@ -123,21 +139,19 @@ Her mesajın başında [ID:sayı] etiketi var.
 Bana DETAYLI ve BİLGİ ODAKLI bir bülten hazırla. Amaç: bu grupta paylaşılan
 önemli/öğretici bilgileri KAÇIRMADAN toplamak.
 
-📰 BÜLTEN
-- Sohbette geçen faydalı/öğretici her bilgiyi topla: taktikler, ipuçları,
-  nasıl-yapılır bilgileri, stratejiler, kaynaklar, linkler, öneriler, dikkat
-  çekici veriler, deneyimler, açıklamalar.
-- Konu konu, derli toplu, madde madde "•" yaz.
-- Uzun olması sorun değil; önemli hiçbir bilgi atlanmasın. Ama gereksiz sohbeti,
-  şakaları, selamlaşmayı, dolguyu atla.
-- Bir konu üzerine birden çok kişi konuştuysa, bilgiyi birleştirip net yaz.
+BİÇİM:
+- İlk satır: **Özet:** ile günün tek cümlelik en önemli çıkarımı.
+- Sonra konu konu: her bölüm başlığı **kalın**, altına "•" maddeler.
+- Faydalı/öğretici her bilgiyi topla: taktikler, ipuçları, nasıl-yapılır bilgileri,
+  stratejiler, kaynaklar, linkler, öneriler, dikkat çekici veriler, deneyimler.
+- Bir konu üzerine birden çok kişi konuştuysa bilgiyi birleştirip net yaz.
+- Sana DOĞRUDAN yöneltilmiş soru/rica/duyuru varsa en sonda **Sana özel** başlığı
+  altında belirt. Yoksa bu bölümü hiç yazma.
 
-🔔 SANA ÖZEL (varsa)
-- Eğer sana DOĞRUDAN yöneltilmiş bir soru, rica veya seni ilgilendiren önemli
-  bir duyuru varsa, bunu en altta kısaca belirt. Yoksa bu bölümü hiç yazma.
-
-Kurallar:
-- Türkçe yaz. Markdown işareti (*, #, _, `) KULLANMA.
+KURALLAR:
+- SADECE mesajlarda geçeni yaz, ASLA uydurma. Türkçe yaz.
+- Gereksiz sohbeti, şakayı, selamlaşmayı, dolguyu atla. Uzun olabilir ama tekrar yok.
+- Vurgu için YALNIZCA **çift yıldız** kullan. #, _, ` , > KULLANMA.
 - [ID:..] etiketlerini metne YAZMA.
 - En sonda, AYRI bir satırda, en kritik 1-2 mesajın ID'sini şu formatta ver:
   KRITIK: 12345, 12389
@@ -468,6 +482,14 @@ def sadece_sahip(update: Update) -> bool:
     return update.effective_user and update.effective_user.id == SAHIP_ID
 
 
+def _bicim(metin):
+    """Model çıktısını Telegram HTML'e çevirir: ÖNCE güvenli escape, SONRA **kalın**.
+    Modelin ürettiği < > & kaçar (injection yok); yalnız bizim **...** dönüşümümüz <b> üretir."""
+    g = html.escape(metin or "")
+    g = re.sub(r"\*\*([^*\n]+?)\*\*", r"<b>\1</b>", g)
+    return g
+
+
 def _parcala(metin, limit):
     parcalar = []
     while len(metin) > limit:
@@ -513,11 +535,16 @@ async def _grup_listesi_kb():
 
 
 def _mod_secim_kb(key):
-    """Özet öncesi: 3 mod butonu + Soru-Cevap + Geri/Kapat."""
-    butonlar = [
-        [InlineKeyboardButton(f"{MODLAR[m][0]} {MODLAR[m][1]}", callback_data=f"mod:{key}:{m}")]
-        for m in MODLAR
-    ]
+    """Özet öncesi: 3 mod butonu + Soru-Cevap + Geri/Kapat.
+    En son kullanılan mod (ayarlar.json) ⭐ ile işaretlenip en üste alınır."""
+    son_mod = ayarlari_oku().get("son_mod")
+    sirali = ([son_mod] if son_mod in MODLAR else []) + [m for m in MODLAR if m != son_mod]
+    butonlar = []
+    for m in sirali:
+        yildiz = "⭐ " if m == son_mod else ""
+        butonlar.append([InlineKeyboardButton(
+            f"{yildiz}{MODLAR[m][0]} {MODLAR[m][1]}", callback_data=f"mod:{key}:{m}"
+        )])
     butonlar.append([InlineKeyboardButton(
         "📄 Soru-Cevap dosyası", callback_data=f"mod:{key}:sorucevap"
     )])
@@ -526,12 +553,12 @@ def _mod_secim_kb(key):
 
 
 def _diger_modlar_kb(key, aktif_mod, okundu_callback, bos):
-    """Özet sonrası: okundu/kapat + diğer modlarda tekrar deneme butonları."""
+    """Özet sonrası: okundu / okundu+kapat / kapat + diğer modlarda tekrar deneme."""
     satirlar = []
     if not bos:
         satirlar.append([
             InlineKeyboardButton("✅ Okundu yap", callback_data=okundu_callback),
-            KAPAT_BTN,
+            InlineKeyboardButton("✅ Okundu & kapat", callback_data=f"okx:{okundu_callback}"),
         ])
     digerler = [m for m in MODLAR if m != aktif_mod]
     satirlar.append([
@@ -540,6 +567,8 @@ def _diger_modlar_kb(key, aktif_mod, okundu_callback, bos):
     ])
     if bos:
         satirlar.append([InlineKeyboardButton("⬅️ Geri", callback_data="geri"), KAPAT_BTN])
+    else:
+        satirlar.append([KAPAT_BTN])
     return InlineKeyboardMarkup(satirlar)
 
 
@@ -579,11 +608,25 @@ async def _ozeti_uret_goster(query, key, mod):
         ozet = await asyncio.to_thread(ozetle, veri["baslik"], veri["konusma"], mod)
     except Exception as e:
         msg = str(e)
+        yeniden = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🔄 Tekrar dene", callback_data=f"mod:{key}:{mod}"),
+            KAPAT_BTN,
+        ]])
         if any(k in msg for k in ("429", "503", "502", "yoğun", "rate", "high demand")):
-            await query.edit_message_text("⚠️ Model şu an yoğun. Biraz sonra tekrar dene.")
+            await query.edit_message_text(
+                "⚠️ Model şu an yoğun. Biraz sonra tekrar dene.", reply_markup=yeniden
+            )
         else:
-            await query.edit_message_text(f"⚠️ Özetlenemedi: {html.escape(msg[:300])}")
+            await query.edit_message_text(
+                f"⚠️ Özetlenemedi: {html.escape(msg[:300])}", reply_markup=yeniden
+            )
         return
+
+    # Mod hafızası: bir sonraki sefere bu modu öne çıkar
+    try:
+        ay = ayarlari_oku(); ay["son_mod"] = mod; ayarlari_yaz(ay)
+    except Exception:
+        pass
 
     baslik_g = html.escape(veri["baslik"])
 
@@ -606,14 +649,20 @@ async def _ozeti_uret_goster(query, key, mod):
         sayac = f"\n\n━━━━━━━━━\n📊 {veri['sayi']} metin mesajı · {emoji} {ad}"
 
     kb = _diger_modlar_kb(key, mod, veri["okundu"], bos=False)
-    tam = f"📋 <b>{baslik_g}</b>\n\n{html.escape(ozet)}{sayac}"
+    govde = _bicim(ozet)
+    duz = f"📋 <b>{baslik_g}</b>\n\n{govde}{sayac}"
     LIMIT = 3900
 
-    if len(tam) <= LIMIT:
+    if len(duz) <= LIMIT:
+        # Tek mesaja sığıyor: uzunsa gövdeyi katlanabilir alıntıya al (mesaj kısa görünür)
+        if len(govde) > 700:
+            govde = f"<blockquote expandable>{govde}</blockquote>"
+        tam = f"📋 <b>{baslik_g}</b>\n\n{govde}{sayac}"
         await query.edit_message_text(tam, reply_markup=kb, parse_mode="HTML")
         return
 
-    parcalar = _parcala(tam, LIMIT)
+    # Çok uzun: katlamadan parçalara böl
+    parcalar = _parcala(duz, LIMIT)
     for i, parca in enumerate(parcalar):
         son = (i == len(parcalar) - 1)
         k = kb if son else None
@@ -870,9 +919,16 @@ async def _bulten_gonder(bot, baslik, mesajlar, chat_id, topic_id=None):
         btn_satir.append(InlineKeyboardButton(etiket, url=_msg_link(chat_id, mid, topic_id)))
     kb = InlineKeyboardMarkup([btn_satir]) if btn_satir else None
 
-    metin = f"📰 <b>{html.escape(baslik)}</b>\n\n{html.escape(govde)}"
+    govde_h = _bicim(govde)
+    baslik_h = html.escape(baslik)
+    duz = f"📰 <b>{baslik_h}</b>\n\n{govde_h}"
     LIMIT = 3900
-    parcalar = _parcala(metin, LIMIT) if len(metin) > LIMIT else [metin]
+    if len(duz) <= LIMIT:
+        # Tek mesaja sığıyor: uzunsa gövdeyi katlanabilir alıntıya al
+        govde_g = f"<blockquote expandable>{govde_h}</blockquote>" if len(govde_h) > 700 else govde_h
+        parcalar = [f"📰 <b>{baslik_h}</b>\n\n{govde_g}"]
+    else:
+        parcalar = _parcala(duz, LIMIT)
 
     for i, parca in enumerate(parcalar):
         son = (i == len(parcalar) - 1)
@@ -987,6 +1043,28 @@ async def durum_komut(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🧠 Model: {html.escape(OPENROUTER_MODEL)}",
         parse_mode="HTML",
     )
+
+
+async def _okundu_isaretle(inner):
+    """inner: 'okundu:<gid>' veya 'oktop:<gid>:<tid>'. Okundu yapar; (ok, hata) döndürür."""
+    parts = inner.split(":")
+    dialog = await grup_dialog_bul(int(parts[1]))
+    if dialog is None:
+        return False, "Grup bulunamadı."
+    try:
+        if parts[0] == "okundu":
+            await tele.send_read_acknowledge(dialog.entity)
+        else:  # oktop
+            topic_id = int(parts[2])
+            topicler = await topiclari_getir(dialog.entity)
+            topic = next((t for t in topicler if t.id == topic_id), None)
+            read_max = topic.top_message if topic else 0
+            await tele(ReadDiscussionRequest(
+                peer=dialog.entity, msg_id=topic_id, read_max_id=read_max
+            ))
+        return True, None
+    except Exception as e:
+        return False, str(e)
 
 
 async def buton_tiklandi(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1138,41 +1216,32 @@ async def buton_tiklandi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             grup_id=grup_id, topic_id=topic_id,
         )
 
-    # Normal grubu okundu yap
-    elif veri.startswith("okundu:"):
-        grup_id = int(veri.split(":", 1)[1])
-        dialog = await grup_dialog_bul(grup_id)
-        if dialog is None:
-            await query.edit_message_text("Grup bulunamadı.")
-            return
-        await tele.send_read_acknowledge(dialog.entity)
+    # Okundu yap (mesajı koru, alta not ekle)
+    elif veri.startswith("okundu:") or veri.startswith("oktop:"):
+        ok, hata = await _okundu_isaretle(veri)
         eski = query.message.text_html if query.message.text else ""
-        await query.edit_message_text(
-            eski + "\n\n✅ <b>Okundu olarak işaretlendi.</b>", parse_mode="HTML"
-        )
-
-    # Konuyu okundu yap
-    elif veri.startswith("oktop:"):
-        _, gid, tid = veri.split(":")
-        grup_id, topic_id = int(gid), int(tid)
-        dialog = await grup_dialog_bul(grup_id)
-        if dialog is None:
-            await query.edit_message_text("Grup bulunamadı.")
-            return
-        topicler = await topiclari_getir(dialog.entity)
-        topic = next((t for t in topicler if t.id == topic_id), None)
-        eski = query.message.text_html if query.message.text else ""
-        try:
-            read_max = topic.top_message if topic else 0
-            await tele(ReadDiscussionRequest(
-                peer=dialog.entity, msg_id=topic_id, read_max_id=read_max
-            ))
+        if ok:
             await query.edit_message_text(
-                eski + "\n\n✅ <b>Konu okundu olarak işaretlendi.</b>", parse_mode="HTML"
+                eski + "\n\n✅ <b>Okundu olarak işaretlendi.</b>", parse_mode="HTML"
             )
-        except Exception as e:
+        else:
             await query.edit_message_text(
-                eski + f"\n\n⚠️ Okundu işaretlenemedi: {html.escape(str(e))}",
+                eski + f"\n\n⚠️ Okundu işaretlenemedi: {html.escape(hata)}",
+                parse_mode="HTML",
+            )
+
+    # Okundu & kapat (mesajı sil)
+    elif veri.startswith("okx:"):
+        ok, hata = await _okundu_isaretle(veri[4:])
+        if ok:
+            try:
+                await query.delete_message()
+            except Exception:
+                await query.edit_message_text("✅ Okundu olarak işaretlendi.")
+        else:
+            eski = query.message.text_html if query.message.text else ""
+            await query.edit_message_text(
+                eski + f"\n\n⚠️ Okundu işaretlenemedi: {html.escape(hata)}",
                 parse_mode="HTML",
             )
 
