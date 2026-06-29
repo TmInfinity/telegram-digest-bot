@@ -1,15 +1,15 @@
 # CLAUDE.md — Telegram Özet & Bülten Botu
 
 Bu dosya, Claude Code'un bu projede çalışırken bağlamı anlaması içindir.
-**Yanıtlar ve açıklamalar Türkçe olmalı.** Kullanıcı (Maksat) Türkçe konuşur.
+Projenin geliştiricisi Türkçe konuşur; bu projede yanıtlar/açıklamalar Türkçe olabilir.
 
 ---
 
 ## Proje nedir?
 
-Telethon (userbot) + python-telegram-bot (bot arayüzü) + Google Gemini (özetleme)
-kullanan, kişisel bir Telegram mesaj özetleme sistemi. Tek kullanıcılıdır (sahibi
-Maksat). macOS'ta `launchd` ile arka planda 7/24 (Mac açıkken) çalışır.
+Telethon (userbot) + python-telegram-bot (bot arayüzü) + OpenRouter (özetleme)
+kullanan, kişisel/self-host bir Telegram mesaj özetleme sistemi. Tek kullanıcılıdır
+(sahibi = botu kuran kişi). macOS'ta `launchd` ile arka planda 7/24 (Mac açıkken) çalışır.
 
 İki ana yetenek:
 1. **Manuel özet** (`/ozet`): okunmamış grupları/forum konularını listeler, seçilen

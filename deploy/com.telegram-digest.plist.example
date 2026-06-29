@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  macOS launchd template to run the bot 24/7 in the background.
+
+  Setup:
+    1. Replace __WORKDIR__ with the absolute path to this repo.
+    2. Replace __UV_PATH__ with the output of `which uv`
+       (e.g. /opt/homebrew/bin/uv on Apple Silicon, /usr/local/bin/uv on Intel).
+    3. Copy to ~/Library/LaunchAgents/com.telegram-digest.plist
+    4. Load it:
+         launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.telegram-digest.plist
+       Reload after code changes:
+         launchctl bootout   gui/$(id -u)/com.telegram-digest
+         launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.telegram-digest.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.telegram-digest</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__UV_PATH__</string>
+        <string>run</string>
+        <string>python</string>
+        <string>bot.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__WORKDIR__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- The app keeps its own rotating app.log; launchd output goes to /dev/null. -->
+    <key>StandardOutPath</key>
+    <string>/dev/null</string>
+
+    <key>StandardErrorPath</key>
+    <string>/dev/null</string>
+</dict>
+</plist>
