@@ -7,12 +7,14 @@ Modlar: 📝 Genel · 💡 Bilgi & ipucu · 🎯 Aksiyon & görevler
 Her özetin altında diğer modlarda tekrar deneme butonları vardır.
 
 Gerekli ortam değişkenleri (.env):
-    TG_API_ID, TG_API_HASH, GEMINI_API_KEY, TG_BOT_TOKEN, TG_CHAT_ID
+    TG_API_ID, TG_API_HASH, OPENROUTER_API_KEY, TG_BOT_TOKEN, TG_CHAT_ID
+    (OPENROUTER_MODEL isteğe bağlı; yoksa varsayılan modele düşer.)
 """
 
 import os
 import sys
 import time
+import asyncio
 import html
 import uuid
 import json
@@ -29,7 +31,7 @@ from telethon.tl.functions.messages import GetForumTopicsRequest, ReadDiscussion
 from telethon.tl.types import (
     ChannelParticipantsAdmins, ChannelParticipantCreator, ChatParticipantCreator,
 )
-from google import genai
+import httpx
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import (
@@ -56,12 +58,12 @@ BASLANGIC = datetime.now()  # bot ne zaman başladı (çalışma süresi için)
 # ----------------------------- Ayarlar -----------------------------
 API_ID = int(os.environ.get("TG_API_ID", "0"))
 API_HASH = os.environ.get("TG_API_HASH", "")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")
 BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
 SAHIP_ID = int(os.environ.get("TG_CHAT_ID", "0"))
 
 SESSION = "ozet_session"
-MODEL = "gemini-2.5-flash"
 MAX_MESSAGES = 500
 # -------------------------------------------------------------------
 
@@ -74,7 +76,7 @@ MODLAR = {
     "aksiyon": ("🎯", "Aksiyon & görevler"),
 }
 
-# Her mod için Gemini prompt şablonu ({baslik} ve {konusma} ile)
+# Her mod için özet prompt şablonu ({baslik} ve {konusma} ile)
 MOD_PROMPTLARI = {
     "genel": """Aşağıda "{baslik}" adlı Telegram sohbetindeki okunmamış mesajlar var.
 Genel bir özet çıkar:
@@ -267,7 +269,7 @@ def _msg_link(chat_id, msg_id, topic_id=None):
 
 
 def _kritik_ayikla(metin):
-    """Gemini çıktısından 'KRITIK: ...' satırını ayıklar; (gövde, [id'ler]) döndürür."""
+    """Model çıktısından 'KRITIK: ...' satırını ayıklar; (gövde, [id'ler]) döndürür."""
     govde_satirlar, kritik_ids = [], []
     for s in (metin or "").splitlines():
         if s.strip().upper().startswith("KRITIK"):
@@ -408,14 +410,43 @@ def _konusma_metni(mesajlar):
     return "\n".join(f"{gonderen_adi(m)}: {m.text}" for m in mesajlar)
 
 
-def _gemini_cagir(prompt):
-    """Gemini'ye prompt gönderir; 503 gibi geçici hatalarda yeniden dener."""
-    genai_client = genai.Client(api_key=GEMINI_API_KEY)
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def _ai_cagir(prompt):
+    """OpenRouter (OpenAI-uyumlu) üzerinden özetletir; geçici hatalarda yeniden dener.
+
+    SENKRON + bloklayıcı (httpx.post, time.sleep). Async handler'lardan ASLA doğrudan
+    çağırma — `asyncio.to_thread(_ai_cagir, ...)` ile thread'e at, yoksa tüm olay
+    döngüsü (Telethon dahil) donar. Model `.env`'deki OPENROUTER_MODEL ile değişir.
+    """
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        # OpenRouter'ın isteğe bağlı kimlik başlıkları (sıralamada yardımcı olur):
+        "X-Title": "telegram-ozet",
+    }
+    govde = {
+        "model": OPENROUTER_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+    }
     son_hata = None
     for deneme in range(4):
         try:
-            resp = genai_client.models.generate_content(model=MODEL, contents=prompt)
-            return resp.text
+            r = httpx.post(OPENROUTER_URL, headers=headers, json=govde, timeout=120)
+            if r.status_code != 200:
+                # 429/503 gibi geçici hataları yeniden dene; kalıcıları yukarı fırlat.
+                detay = r.text[:300]
+                if r.status_code in (429, 500, 502, 503, 529):
+                    raise RuntimeError(f"{r.status_code} geçici hata: {detay}")
+                raise RuntimeError(f"OpenRouter {r.status_code}: {detay}")
+            veri = r.json()
+            if "error" in veri:
+                raise RuntimeError(f"OpenRouter hatası: {veri['error']}")
+            metin = (veri["choices"][0]["message"].get("content") or "").strip()
+            if not metin:
+                raise RuntimeError("Model boş yanıt döndürdü.")
+            return metin
         except Exception as e:
             son_hata = e
             if deneme < 3:
@@ -425,7 +456,7 @@ def _gemini_cagir(prompt):
 
 def ozetle(baslik, konusma, mod):
     prompt = MOD_PROMPTLARI[mod].format(baslik=baslik, konusma=konusma)
-    return _gemini_cagir(prompt)
+    return _ai_cagir(prompt)
 
 
 def _bos_mu(metin):
@@ -543,13 +574,13 @@ async def _ozeti_uret_goster(query, key, mod):
         return
 
     emoji, ad = MODLAR[mod]
-    await query.edit_message_text(f"🤖 Gemini özetliyor… ({emoji} {ad})")
+    await query.edit_message_text(f"🤖 Özetleniyor… ({emoji} {ad})")
     try:
-        ozet = ozetle(veri["baslik"], veri["konusma"], mod)
+        ozet = await asyncio.to_thread(ozetle, veri["baslik"], veri["konusma"], mod)
     except Exception as e:
         msg = str(e)
-        if "503" in msg or "UNAVAILABLE" in msg or "high demand" in msg:
-            await query.edit_message_text("⚠️ Gemini şu an yoğun. Biraz sonra tekrar dene.")
+        if any(k in msg for k in ("429", "503", "502", "yoğun", "rate", "high demand")):
+            await query.edit_message_text("⚠️ Model şu an yoğun. Biraz sonra tekrar dene.")
         else:
             await query.edit_message_text(f"⚠️ Özetlenemedi: {html.escape(msg[:300])}")
         return
@@ -819,7 +850,9 @@ async def _bulten_gonder(bot, baslik, mesajlar, chat_id, topic_id=None):
 
     konusma = "\n".join(f"[ID:{m.id}] {gonderen_adi(m)}: {m.text}" for m in mesajlar)
     try:
-        ham = _gemini_cagir(BULTEN_PROMPT.format(baslik=baslik, konusma=konusma))
+        ham = await asyncio.to_thread(
+            _ai_cagir, BULTEN_PROMPT.format(baslik=baslik, konusma=konusma)
+        )
     except Exception as e:
         await bot.send_message(
             SAHIP_ID,
@@ -951,7 +984,7 @@ async def durum_komut(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏰ Otomatik: {'🟢 açık' if acik else '🔴 kapalı'} (her sabah 09:00)\n"
         f"📌 Seçili: {g_sayi} grup + {k_sayi} konu\n"
         f"📰 Son bülten: {son}\n"
-        f"🧠 Model: {MODEL}",
+        f"🧠 Model: {html.escape(OPENROUTER_MODEL)}",
         parse_mode="HTML",
     )
 
@@ -1163,7 +1196,7 @@ async def _hata_yakala(update, context):
 def main():
     for ad, deger in [
         ("TG_API_ID", API_ID), ("TG_API_HASH", API_HASH),
-        ("GEMINI_API_KEY", GEMINI_API_KEY), ("TG_BOT_TOKEN", BOT_TOKEN),
+        ("OPENROUTER_API_KEY", OPENROUTER_API_KEY), ("TG_BOT_TOKEN", BOT_TOKEN),
         ("TG_CHAT_ID", SAHIP_ID),
     ]:
         if not deger:

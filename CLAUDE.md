@@ -38,11 +38,19 @@ Maksat). macOS'ta `launchd` ile arka planda 7/24 (Mac açıkken) çalışır.
   Normal grup okundu: `tele.send_read_acknowledge(entity)`.
 - **Sadece sahip kullanabilir:** her handler `sadece_sahip()` / `SAHIP_ID` kontrolü yapar.
 
-## Özetleme (Gemini)
+## Özetleme (OpenRouter)
 
-- Model: `gemini-2.5-flash` (sabit `MODEL`). Yeni format API anahtarı (`AQ.Ab...`)
-  resmi `google-genai` SDK ile sorunsuz çalışır.
-- `_gemini_cagir()` ortak çağrı + 503/yoğunluk için 4 denemeli geri çekilme (retry).
+- Sağlayıcı: **OpenRouter** (OpenAI-uyumlu HTTP API, `httpx` ile çağrılır). Model
+  `.env`'deki `OPENROUTER_MODEL` ile değişir; varsayılan `deepseek/deepseek-chat-v3-0324`
+  (ucuz, Türkçesi iyi, agresif içerik filtresi yok). Eskiden Google Gemini kullanılıyordu
+  ama `gemini-2.5-flash` grup mesajlarını `PROHIBITED_CONTENT` ile sık sık blokluyordu;
+  bu yüzden OpenRouter'a geçildi.
+- `_ai_cagir()` ortak çağrı + 429/5xx/yoğunluk için 4 denemeli geri çekilme (retry).
+  Boş yanıtı da hataya çevirir, sessizce `None` geçirmez. SENKRON+bloklayıcı olduğu
+  için handler'lardan `asyncio.to_thread(_ai_cagir, ...)` ile çağrılır (yoksa Telethon
+  dahil tüm olay döngüsü donar).
+- NOT: OpenRouter ücretsiz (`:free`) modeller paylaşımlı havuzda olduğundan sık `429`
+  yer; bu yüzden küçük kredi + ucuz ücretli slug tercih edildi.
 - 3 özet modu: `genel`, `bilgi`, `aksiyon` (`MOD_PROMPTLARI`). bilgi/aksiyon boşsa
   "BOŞ" döndürür (`_bos_mu`), kullanıcıya diğer modlar önerilir.
 - Otomatik bülten ayrı prompt: `BULTEN_PROMPT` — BİLGİ ODAKLI (görev listesi değil),
@@ -68,8 +76,9 @@ Maksat). macOS'ta `launchd` ile arka planda 7/24 (Mac açıkken) çalışır.
 
 ## Yapılandırma & kalıcılık
 
-- `.env` (chmod 600, .gitignore'da): `TG_API_ID, TG_API_HASH, GEMINI_API_KEY,
-  TG_BOT_TOKEN, TG_CHAT_ID`. `python-dotenv` ile yüklenir.
+- `.env` (chmod 600, .gitignore'da): `TG_API_ID, TG_API_HASH, OPENROUTER_API_KEY,
+  OPENROUTER_MODEL, TG_BOT_TOKEN, TG_CHAT_ID`. `python-dotenv` ile yüklenir.
+  (`OPENROUTER_MODEL` zorunlu değil; yoksa kod varsayılan slug'a düşer.)
 - `ayarlar.json`: `{otomatik_acik, gruplar:[id...], konular:[[grup_id,konu_id]...], son_bulten}`.
 - `ozet_session.session`: Telethon oturumu — HESABIN TAM ERİŞİMİ, asla paylaşma/commit etme.
 - Loglar: `app.log` (RotatingFileHandler, tarih damgalı, 1MB×3 yedek). Eski
@@ -84,8 +93,8 @@ Maksat). macOS'ta `launchd` ile arka planda 7/24 (Mac açıkken) çalışır.
 ## Çalıştırma / geliştirme akışı
 
 - Ortam: `uv` ile yönetilir (`pyproject.toml`, `.venv`). Çalıştırma: `uv run python bot.py`.
-- Bağımlılık ekleme: `uv add <paket>`. Mevcutlar: telethon, google-genai,
-  python-telegram-bot[job-queue], python-dotenv.
+- Bağımlılık ekleme: `uv add <paket>`. Mevcutlar: telethon, httpx (OpenRouter
+  çağrısı için), python-telegram-bot[job-queue], python-dotenv.
 - **Bot launchd ile çalışır** (`~/Library/LaunchAgents/com.maksat.telegramozet.plist`).
   Kodu değiştirince servisi yeniden başlat:
   ```
