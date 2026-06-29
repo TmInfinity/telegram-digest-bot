@@ -997,9 +997,40 @@ async def _bulteni_calistir(bot, zorla=False):
     log.info("Bülten çalıştı: %d grup, %d konu (zorla=%s)", len(gruplar), len(konular), zorla)
 
 
+# Aynı anda iki bülten çalışmasını önler (09:00 job'u + telafi job'u yarışı)
+_bulten_lock = asyncio.Lock()
+
+
+async def _gunluk_bulten_tetikle(bot, telafi):
+    """Bugünün otomatik bültenini (henüz çalışmadıysa) çalıştırır.
+    Kalıcı 'son_bulten_tarih' sayesinde günde yalnız bir kez çalışır.
+    telafi=True iken yalnız 09:00'dan sonra tetiklenir (uyandıktan sonra telafi)."""
+    async with _bulten_lock:
+        ayar = ayarlari_oku()
+        if not ayar.get("otomatik_acik"):
+            return
+        bugun = datetime.now().date().isoformat()
+        if ayar.get("son_bulten_tarih") == bugun:
+            return  # bugün zaten çalıştı
+        if telafi and datetime.now().hour < 9:
+            return  # telafi sabah 09:00'dan önce çalışmasın
+        # Tarihi ÖNCEDEN işaretle: hata olsa bile gün boyu tekrar tekrar denemesin.
+        ay = ayarlari_oku()
+        ay["son_bulten_tarih"] = bugun
+        ayarlari_yaz(ay)
+        log.info("Otomatik bülten tetiklendi (telafi=%s).", telafi)
+        await _bulteni_calistir(bot, zorla=False)
+
+
 async def gunluk_bulten_job(context: ContextTypes.DEFAULT_TYPE):
-    """Her sabah 09:00'da çalışır."""
-    await _bulteni_calistir(context.bot, zorla=False)
+    """Her sabah tam 09:00'da çalışır (Mac uyanıksa)."""
+    await _gunluk_bulten_tetikle(context.bot, telafi=False)
+
+
+async def bulten_telafi_job(context: ContextTypes.DEFAULT_TYPE):
+    """Telafi: Mac 09:00'da uyuyorsa, uyandıktan sonraki ilk tetiklemede bugünün
+    bülteni çalışmadıysa hemen çalıştırır (sık aralıklı kontrol)."""
+    await _gunluk_bulten_tetikle(context.bot, telafi=True)
 
 
 async def test_bulten_komut(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1292,6 +1323,14 @@ def main():
     except Exception:
         tz = timezone.utc
     app.job_queue.run_daily(gunluk_bulten_job, time=saat(9, 0, tzinfo=tz))
+
+    # Telafi: Mac 09:00'da uykudaysa, uyandıktan sonra ilk kontrolde bugünün bülteni
+    # çalışmadıysa hemen çalıştırır. misfire_grace_time, uyku sırasında kaçan tetiği
+    # uyanışta hemen ateşler. Çalışıp çalışmama kararını _gunluk_bulten_tetikle verir.
+    app.job_queue.run_repeating(
+        bulten_telafi_job, interval=120, first=30,
+        job_kwargs={"misfire_grace_time": 3600, "coalesce": True},
+    )
 
     app.run_polling()
 

@@ -79,7 +79,9 @@ Maksat). macOS'ta `launchd` ile arka planda 7/24 (Mac açıkken) çalışır.
 - `.env` (chmod 600, .gitignore'da): `TG_API_ID, TG_API_HASH, OPENROUTER_API_KEY,
   OPENROUTER_MODEL, TG_BOT_TOKEN, TG_CHAT_ID`. `python-dotenv` ile yüklenir.
   (`OPENROUTER_MODEL` zorunlu değil; yoksa kod varsayılan slug'a düşer.)
-- `ayarlar.json`: `{otomatik_acik, gruplar:[id...], konular:[[grup_id,konu_id]...], son_bulten}`.
+- `ayarlar.json`: `{otomatik_acik, gruplar:[id...], konular:[[grup_id,konu_id]...],
+  son_bulten, son_bulten_tarih, son_mod}`. `son_bulten_tarih` (YYYY-MM-DD) günde tek
+  bülten + uyku telafisi için; `son_mod` mod hafızası için.
 - `ozet_session.session`: Telethon oturumu — HESABIN TAM ERİŞİMİ, asla paylaşma/commit etme.
 - Loglar: `app.log` (RotatingFileHandler, tarih damgalı, 1MB×3 yedek). Eski
   `bot.log`/`bot.error.log` launchd çıktısıdır (çökme için).
@@ -110,7 +112,11 @@ Maksat). macOS'ta `launchd` ile arka planda 7/24 (Mac açıkken) çalışır.
 ## Bilinen sınırlar / olası geliştirmeler
 
 - `MAX_MESSAGES = 500`: çok yoğun gruplarda en eski okunmamışlar kaçar (sessizce).
-- Otomatik bülten yalnız Mac açık+uyanıkken çalışır (launchd, uyku/kapanışta durur).
+- Otomatik bülten yalnız Mac açıkken çalışır. 09:00'da Mac uyuyorsa o tetik kaçar AMA
+  artık TELAFİ var: `bulten_telafi_job` her 120 sn'de bir kontrol eder; Mac uyanınca
+  (09:00 sonrası) bugünün bülteni çalışmadıysa hemen çalıştırır. Günde tek sefer
+  garantisi `son_bulten_tarih` + `_bulten_lock` ile sağlanır. Mac gün boyu hiç
+  uyanmazsa yine de o gün bülten gelmez.
 - Görüntü analizi (Gemini'ye resim) YOK — bilinçli karar (kota/hız). Resimler sadece
   soru-cevap dosyasına ham gömülür.
 - Önbellek (`ONBELLEK`) bellekte; bot yeniden başlayınca mod-seçim oturumları düşer
