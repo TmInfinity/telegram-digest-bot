@@ -1,0 +1,10 @@
+.env
+*.session
+*.session-journal
+.venv/
+__pycache__/
+ayarlar.json
+*.log
+*.log.*
+soru_cevap/
+.DS_Store
