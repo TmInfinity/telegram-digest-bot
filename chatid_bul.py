@@ -9,10 +9,10 @@ Kullanım:
     uv run python chatid_bul.py
 """
 
+import json
 import os
 import sys
 import urllib.request
-import json
 
 TOKEN = os.environ.get("TG_BOT_TOKEN", "")
 

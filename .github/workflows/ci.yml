@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint (ruff)
+        run: uvx ruff check .
+
+      - name: Compile
+        run: uv run python -m py_compile bot.py i18n.py chatid_bul.py
+
+      - name: i18n consistency (all languages share the same keys)
+        run: |
+          uv run python - <<'PY'
+          import i18n, sys
+          base = set(i18n.STRINGS["en"])
+          ok = True
+          for lang, d in i18n.STRINGS.items():
+              missing = base - set(d)
+              extra = set(d) - base
+              if missing or extra:
+                  ok = False
+                  print(f"[{lang}] missing={sorted(missing)} extra={sorted(extra)}")
+          print("i18n keys consistent" if ok else "i18n MISMATCH")
+          sys.exit(0 if ok else 1)
+          PY

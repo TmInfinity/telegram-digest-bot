@@ -11,35 +11,40 @@ Gerekli ortam değişkenleri (.env):
     (OPENROUTER_MODEL isteğe bağlı; yoksa varsayılan modele düşer.)
 """
 
-import os
-import sys
-import time
 import asyncio
 import html
-import uuid
 import json
-import re
 import logging
+import os
+import re
+import sys
+import time
+import uuid
+from datetime import datetime, timedelta, timezone
+from datetime import time as saat
 from logging.handlers import RotatingFileHandler
-from datetime import datetime, timedelta, timezone, time as saat
 
+import httpx
 from dotenv import load_dotenv
-load_dotenv()
-
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+)
 from telethon import TelegramClient
 from telethon.tl.functions.messages import GetForumTopicsRequest, ReadDiscussionRequest
 from telethon.tl.types import (
-    ChannelParticipantsAdmins, ChannelParticipantCreator, ChatParticipantCreator,
-)
-import httpx
-
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler, ContextTypes,
+    ChannelParticipantCreator,
+    ChannelParticipantsAdmins,
+    ChatParticipantCreator,
 )
 
 import i18n
 from i18n import t
+
+load_dotenv()  # .env -> ortam değişkenleri (aşağıdaki sabitlerden önce)
 
 # ----------------------------- Loglama -----------------------------
 # Tarih damgalı, kendini temizleyen log: 1MB'ı geçince döner, en fazla 3 yedek (~4MB)
@@ -637,7 +642,9 @@ async def _ozeti_uret_goster(query, key, mod):
 
     # Mod hafızası: bir sonraki sefere bu modu öne çıkar
     try:
-        ay = ayarlari_oku(); ay["son_mod"] = mod; ayarlari_yaz(ay)
+        ay = ayarlari_oku()
+        ay["son_mod"] = mod
+        ayarlari_yaz(ay)
     except Exception:
         pass
 
@@ -1262,7 +1269,9 @@ async def buton_tiklandi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         yeni = veri.split(":", 1)[1]
         if yeni in i18n.LANGS:
             i18n.set_dil(yeni)
-            ay = ayarlari_oku(); ay["dil"] = yeni; ayarlari_yaz(ay)
+            ay = ayarlari_oku()
+            ay["dil"] = yeni
+            ayarlari_yaz(ay)
             await _post_init(context.application)  # komut açıklamalarını da güncelle
             await query.edit_message_text(
                 t("lang_changed", lang=i18n.LANGS[yeni]), parse_mode="HTML"
