@@ -38,6 +38,9 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, ContextTypes,
 )
 
+import i18n
+from i18n import t
+
 # ----------------------------- Loglama -----------------------------
 # Tarih damgalı, kendini temizleyen log: 1MB'ı geçince döner, en fazla 3 yedek (~4MB)
 _LOG_DOSYA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.log")
@@ -69,95 +72,103 @@ MAX_MESSAGES = 500
 
 tele = TelegramClient(SESSION, API_ID, API_HASH)
 
-# Mod tanımları: anahtar -> (emoji, ad)
-MODLAR = {
-    "genel":   ("📝", "Genel özet"),
-    "bilgi":   ("💡", "Bilgi & ipucu"),
-    "aksiyon": ("🎯", "Aksiyon & görevler"),
-}
+# Mod emojileri ( adlar i18n'den gelir: t("mode_<anahtar>"))
+MOD_EMOJI = {"genel": "📝", "bilgi": "💡", "aksiyon": "🎯"}
+MODLAR = list(MOD_EMOJI)  # mod anahtarlarının sırası
 
-# Her mod için özet prompt şablonu ({baslik} ve {konusma} ile)
+
+def _mod_ad(mod):
+    return t(f"mode_{mod}")
+
+# Boş çıktı için dilden bağımsız sabit işaret (model bunu aynen yazar)
+BOS_ISARET = "__EMPTY__"
+
+# Her mod için özet prompt şablonu. İngilizce talimat + {dil} ile çıktı dili enjekte
+# edilir (örn. "Turkish"); {baslik} ve {konusma} doldurulur.
 MOD_PROMPTLARI = {
-    "genel": """Aşağıda "{baslik}" sohbetindeki okunmamış mesajlar var. Türkçe, taranabilir bir özet çıkar.
+    "genel": """Below are the unread messages from the chat "{baslik}".
+Write a scannable summary. WRITE THE ENTIRE OUTPUT IN {dil}.
 
-BİÇİM:
-1) İlk satır: **Özet:** ile tek cümlelik TL;DR (en kritik şey).
-2) Sonra konu konu: her bölüm başlığı **kalın**, altına "•" maddeler.
-3) Bana DOĞRUDAN yöneltilen soru/rica/iş varsa en sonda **Sana** başlığı altında topla (yoksa hiç yazma).
+FORMAT:
+1) First line: a one-sentence TL;DR starting with "**Summary:**" (translated into {dil}).
+2) Then topic by topic: each section heading in **bold**, with "•" bullets under it.
+3) If there is a question/request/task addressed DIRECTLY to me, collect them at the
+   end under a **bold heading** (translated into {dil}); otherwise omit that section.
 
-KURALLAR:
-- SADECE mesajlarda geçen bilgiyi yaz. Emin olmadığını yazma, ASLA uydurma.
-- Tarih, saat, isim, rakam, link KAYBOLMASIN. Linkleri olduğu gibi koru.
-- Selamlaşma, şaka, "tamam/ok", dolgu mesajlarını atla.
-- Kısa ve net ol; en fazla ~10 madde, tekrar yok.
-- Vurgu için YALNIZCA **çift yıldız** kullan. #, _, ` , > İŞARETLERİNİ KULLANMA.
+RULES:
+- Use ONLY information present in the messages. Never invent anything.
+- Do not lose dates, times, names, numbers, or links. Keep links verbatim.
+- Skip greetings, jokes, "ok/thanks", and filler.
+- Be concise; at most ~10 bullets, no repetition.
+- For emphasis use ONLY **double asterisks**. Do NOT use #, _, ` or >.
 
-Mesajlar:
+Messages:
 {konusma}""",
 
-    "bilgi": """Aşağıda "{baslik}" sohbetindeki okunmamış mesajlar var.
-Görevin: SADECE faydalı/öğretici içeriği çıkarmak — bilgiler, ipuçları, taktikler,
-kaynaklar, linkler, öneriler, nasıl-yapılır bilgileri.
+    "bilgi": """Below are the unread messages from the chat "{baslik}".
+Your task: extract ONLY useful/educational content — facts, tips, tactics, resources,
+links, recommendations, how-to knowledge. WRITE THE ENTIRE OUTPUT IN {dil}.
 
-BİÇİM:
-- İlk satır: **Özet:** ile tek cümlelik en değerli çıkarım.
-- Faydalı şeyleri **kalın** alt başlıklar altında "•" madde madde, net ve uygulanabilir yaz.
-- Link/kaynak varsa en sonda **Kaynaklar** başlığı altında aynen koru.
+FORMAT:
+- First line: a one-sentence most-valuable takeaway starting with "**Summary:**" (in {dil}).
+- Put useful items under **bold** subheadings as "•" bullets, clear and actionable.
+- If there are links/resources, keep them verbatim under a **bold "Resources" heading** (in {dil}).
 
-KURALLAR:
-- Sohbet/laf kalabalığı/selamlaşma/şaka kısmını TAMAMEN atla.
-- SADECE mesajlarda geçeni yaz, ASLA uydurma. Türkçe yaz.
-- Vurgu için YALNIZCA **çift yıldız** kullan. #, _, ` , > KULLANMA.
-- EĞER kayda değer hiçbir faydalı bilgi yoksa, başka hiçbir şey yazmadan SADECE şunu yaz: BOŞ
+RULES:
+- Completely skip chit-chat, greetings, and jokes.
+- Use ONLY what is in the messages, never invent. Write in {dil}.
+- For emphasis use ONLY **double asterisks**. Do NOT use #, _, ` or >.
+- IF there is no noteworthy useful info, output ONLY this and nothing else: {bos}
 
-Mesajlar:
+Messages:
 {konusma}""",
 
-    "aksiyon": """Aşağıda "{baslik}" sohbetindeki okunmamış mesajlar var.
-Görevin: SADECE bana/bize düşen aksiyonları çıkarmak — yapılacak işler, son tarihler,
-randevular, formlar, başvurular, hatırlanacak şeyler, cevap bekleyen sorular.
+    "aksiyon": """Below are the unread messages from the chat "{baslik}".
+Your task: extract ONLY actions for me/us — to-dos, deadlines, appointments, forms,
+applications, things to remember, questions awaiting an answer. WRITE EVERYTHING IN {dil}.
 
-BİÇİM (yalnız dolu olanı yaz):
-- **⏰ Tarihli** — günü/saati olan işler; her maddenin başına tarihi koy.
-- **📋 Tarihsiz** — yapılacak ama tarihi olmayan işler.
-Her madde "•" ile, kısa ve emir kipinde ("X'i gönder", "Y formunu doldur").
+FORMAT (only write a section if it has items):
+- A **bold "⏰ Dated" heading** (in {dil}) — items with a day/time; put the date first.
+- A **bold "📋 Undated" heading** (in {dil}) — to-dos without a date.
+Each item as a "•" bullet, short and imperative ("Send X", "Fill out form Y").
 
-KURALLAR:
-- Genel sohbeti, bilgi paylaşımını ve dolguyu atla.
-- SADECE mesajlarda geçeni yaz, ASLA uydurma. Türkçe yaz.
-- Vurgu için YALNIZCA **çift yıldız** kullan. #, _, ` , > KULLANMA.
-- EĞER kayda değer hiçbir aksiyon/görev/tarih yoksa, başka hiçbir şey yazmadan SADECE şunu yaz: BOŞ
+RULES:
+- Skip general chat, shared info, and filler.
+- Use ONLY what is in the messages, never invent. Write in {dil}.
+- For emphasis use ONLY **double asterisks**. Do NOT use #, _, ` or >.
+- IF there is no noteworthy action/task/date, output ONLY this and nothing else: {bos}
 
-Mesajlar:
+Messages:
 {konusma}""",
 }
 
 # Otomatik günlük bülten prompt'u (bilgi odaklı, detaylı + kritik mesaj ID'leri)
-BULTEN_PROMPT = """Aşağıda "{baslik}" grubunun SON 24 SAATTEKİ mesajları var.
-Her mesajın başında [ID:sayı] etiketi var.
+BULTEN_PROMPT = """Below are the LAST 24 HOURS of messages from the group "{baslik}".
+Each message is prefixed with an [ID:number] tag.
 
-Bana DETAYLI ve BİLGİ ODAKLI bir bülten hazırla. Amaç: bu grupta paylaşılan
-önemli/öğretici bilgileri KAÇIRMADAN toplamak.
+Write a DETAILED, INFORMATION-FOCUSED digest. WRITE THE ENTIRE OUTPUT IN {dil}.
+Goal: capture the important/educational information shared in this group without missing any.
 
-BİÇİM:
-- İlk satır: **Özet:** ile günün tek cümlelik en önemli çıkarımı.
-- Sonra konu konu: her bölüm başlığı **kalın**, altına "•" maddeler.
-- Faydalı/öğretici her bilgiyi topla: taktikler, ipuçları, nasıl-yapılır bilgileri,
-  stratejiler, kaynaklar, linkler, öneriler, dikkat çekici veriler, deneyimler.
-- Bir konu üzerine birden çok kişi konuştuysa bilgiyi birleştirip net yaz.
-- Sana DOĞRUDAN yöneltilmiş soru/rica/duyuru varsa en sonda **Sana özel** başlığı
-  altında belirt. Yoksa bu bölümü hiç yazma.
+FORMAT:
+- First line: the single most important takeaway of the day, starting with "**Summary:**" (in {dil}).
+- Then topic by topic: each section heading in **bold**, with "•" bullets.
+- Collect every useful/educational item: tactics, tips, how-to knowledge, strategies,
+  resources, links, recommendations, notable data, experiences.
+- If multiple people discussed one topic, merge the information and write it clearly.
+- If there is a question/request/announcement addressed DIRECTLY to me, note it at the
+  end under a **bold heading** (in {dil}). Otherwise omit that section.
 
-KURALLAR:
-- SADECE mesajlarda geçeni yaz, ASLA uydurma. Türkçe yaz.
-- Gereksiz sohbeti, şakayı, selamlaşmayı, dolguyu atla. Uzun olabilir ama tekrar yok.
-- Vurgu için YALNIZCA **çift yıldız** kullan. #, _, ` , > KULLANMA.
-- [ID:..] etiketlerini metne YAZMA.
-- En sonda, AYRI bir satırda, en kritik 1-2 mesajın ID'sini şu formatta ver:
+RULES:
+- Use ONLY what is in the messages, never invent. Write in {dil}.
+- Skip unnecessary chat, jokes, greetings, filler. It may be long, but no repetition.
+- For emphasis use ONLY **double asterisks**. Do NOT use #, _, ` or >.
+- Do NOT write the [ID:..] tags in the text.
+- At the very end, on a SEPARATE line, give the ID(s) of the 1-2 most critical messages
+  in this exact format (keep the word KRITIK literally):
   KRITIK: 12345, 12389
-  Kritik mesaj yoksa: KRITIK: yok
+  If none: KRITIK: yok
 
-Mesajlar:
+Messages:
 {konusma}"""
 
 # Çekilen mesajları kısa süreli tutan önbellek (mod değiştirmede yeniden çekmemek için)
@@ -175,7 +186,7 @@ def ayarlari_oku():
                 return json.load(f)
         except Exception:
             pass
-    return {"otomatik_acik": False, "gruplar": [], "konular": []}  # gruplar: id, konular: [grup_id, konu_id]
+    return {"otomatik_acik": False, "gruplar": [], "konular": [], "dil": "en"}
 
 
 def ayarlari_yaz(ayar):
@@ -387,13 +398,14 @@ def _mesaj_blogu(satir, msg, resim_haritasi):
     for rel in resim_haritasi.get(msg.id, []):
         satir.append(f"![]({rel})")
     if not txt and msg.id not in resim_haritasi:
-        satir.append("(içerik yok)")
+        satir.append(t("qa_md_no_content"))
 
 
 def _soru_cevap_md(baslik, sahip_mesajlari, sorular, topic_id, resim_haritasi):
     """Soru-cevap çiftlerinden (resimler gömülü) Markdown metni üretir."""
     tarih = datetime.now().strftime("%Y-%m-%d %H:%M")
-    satir = [f"# Soru-Cevap — {baslik}", f"_{tarih} · {len(sahip_mesajlari)} cevap_", ""]
+    satir = [t("qa_md_title", baslik=baslik),
+             t("qa_md_meta", tarih=tarih, sayi=len(sahip_mesajlari)), ""]
     yanitsiz = []
     cift_sayisi = 0
     for m in sahip_mesajlari:
@@ -401,10 +413,10 @@ def _soru_cevap_md(baslik, sahip_mesajlari, sorular, topic_id, resim_haritasi):
         if h and h in sorular and sorular[h] is not None:
             q = sorular[h]
             cift_sayisi += 1
-            satir.append(f"### ❓ {gonderen_adi(q)}")
+            satir.append(t("qa_md_question", ad=gonderen_adi(q)))
             _mesaj_blogu(satir, q, resim_haritasi)
             satir.append("")
-            satir.append("**💬 Cevap:**")
+            satir.append(t("qa_md_answer"))
             _mesaj_blogu(satir, m, resim_haritasi)
             satir.append("")
             satir.append("---")
@@ -412,7 +424,7 @@ def _soru_cevap_md(baslik, sahip_mesajlari, sorular, topic_id, resim_haritasi):
         else:
             yanitsiz.append(m)
     if yanitsiz:
-        satir.append("## Yanıt olmayan mesajlar")
+        satir.append(t("qa_md_unanswered"))
         satir.append("")
         for m in yanitsiz:
             _mesaj_blogu(satir, m, resim_haritasi)
@@ -469,13 +481,16 @@ def _ai_cagir(prompt):
 
 
 def ozetle(baslik, konusma, mod):
-    prompt = MOD_PROMPTLARI[mod].format(baslik=baslik, konusma=konusma)
+    prompt = MOD_PROMPTLARI[mod].format(
+        baslik=baslik, konusma=konusma,
+        dil=i18n.PROMPT_LANG.get(i18n.dil(), "English"), bos=BOS_ISARET,
+    )
     return _ai_cagir(prompt)
 
 
 def _bos_mu(metin):
-    t = (metin or "").strip()
-    return len(t) <= 12 and "BOŞ" in t.upper()
+    s = (metin or "").strip()
+    return BOS_ISARET in s and len(s) <= len(BOS_ISARET) + 8
 
 
 def sadece_sahip(update: Update) -> bool:
@@ -514,7 +529,12 @@ def _onbellek_ekle(veri):
 
 # ======================= Arayüz (UI) yardımcıları =======================
 
-KAPAT_BTN = InlineKeyboardButton("❌ Kapat", callback_data="kapat")
+def kapat_btn():
+    return InlineKeyboardButton(t("btn_close"), callback_data="kapat")
+
+
+def geri_btn():
+    return InlineKeyboardButton(t("btn_back"), callback_data="geri")
 
 
 async def _grup_listesi_kb():
@@ -527,11 +547,8 @@ async def _grup_listesi_kb():
         butonlar.append([InlineKeyboardButton(
             f"{isaret} {g.name}  ·  {sayi}", callback_data=f"grp:{g.id}"
         )])
-    butonlar.append([KAPAT_BTN])
-    text = ("📋 <b>Okunmamış Gruplar</b>\n"
-            "<i>Hangisini özetleyeyim?</i>\n"
-            "<i>🗂 konulu grup · 💬 normal grup</i>")
-    return text, InlineKeyboardMarkup(butonlar)
+    butonlar.append([kapat_btn()])
+    return t("groups_header"), InlineKeyboardMarkup(butonlar)
 
 
 def _mod_secim_kb(key):
@@ -543,12 +560,12 @@ def _mod_secim_kb(key):
     for m in sirali:
         yildiz = "⭐ " if m == son_mod else ""
         butonlar.append([InlineKeyboardButton(
-            f"{yildiz}{MODLAR[m][0]} {MODLAR[m][1]}", callback_data=f"mod:{key}:{m}"
+            f"{yildiz}{MOD_EMOJI[m]} {_mod_ad(m)}", callback_data=f"mod:{key}:{m}"
         )])
     butonlar.append([InlineKeyboardButton(
-        "📄 Soru-Cevap dosyası", callback_data=f"mod:{key}:sorucevap"
+        t("btn_qa_file"), callback_data=f"mod:{key}:sorucevap"
     )])
-    butonlar.append([InlineKeyboardButton("⬅️ Geri", callback_data="geri"), KAPAT_BTN])
+    butonlar.append([geri_btn(), kapat_btn()])
     return InlineKeyboardMarkup(butonlar)
 
 
@@ -557,18 +574,18 @@ def _diger_modlar_kb(key, aktif_mod, okundu_callback, bos):
     satirlar = []
     if not bos:
         satirlar.append([
-            InlineKeyboardButton("✅ Okundu yap", callback_data=okundu_callback),
-            InlineKeyboardButton("✅ Okundu & kapat", callback_data=f"okx:{okundu_callback}"),
+            InlineKeyboardButton(t("btn_mark_read"), callback_data=okundu_callback),
+            InlineKeyboardButton(t("btn_mark_read_close"), callback_data=f"okx:{okundu_callback}"),
         ])
     digerler = [m for m in MODLAR if m != aktif_mod]
     satirlar.append([
-        InlineKeyboardButton(f"🔄 {MODLAR[m][1]}", callback_data=f"mod:{key}:{m}")
+        InlineKeyboardButton(t("btn_other_mode", ad=_mod_ad(m)), callback_data=f"mod:{key}:{m}")
         for m in digerler
     ])
     if bos:
-        satirlar.append([InlineKeyboardButton("⬅️ Geri", callback_data="geri"), KAPAT_BTN])
+        satirlar.append([geri_btn(), kapat_btn()])
     else:
-        satirlar.append([KAPAT_BTN])
+        satirlar.append([kapat_btn()])
     return InlineKeyboardMarkup(satirlar)
 
 
@@ -576,7 +593,7 @@ async def _mod_secimi_goster(query, baslik, mesajlar, okundu_callback, toplam,
                              grup_id=None, topic_id=None):
     """Mesajları önbelleğe alıp mod seçim butonlarını gösterir."""
     if not mesajlar:
-        await query.edit_message_text("ℹ️ Metinli okunmamış mesaj bulunamadı.")
+        await query.edit_message_text(t("no_text_unread"))
         return
     key = _onbellek_ekle({
         "baslik": baslik,
@@ -588,7 +605,7 @@ async def _mod_secimi_goster(query, baslik, mesajlar, okundu_callback, toplam,
         "topic_id": topic_id,
     })
     await query.edit_message_text(
-        f"📋 <b>{html.escape(baslik)}</b>\n<i>Ne yapayım?</i>",
+        t("pick_action", baslik=html.escape(baslik)),
         reply_markup=_mod_secim_kb(key), parse_mode="HTML",
     )
 
@@ -597,28 +614,24 @@ async def _ozeti_uret_goster(query, key, mod):
     """Önbellekten alıp seçilen modda özetler ve gösterir."""
     veri = ONBELLEK.get(key)
     if veri is None:
-        await query.edit_message_text(
-            "⌛ Bu özet oturumu artık geçerli değil. /ozet ile tekrar başla."
-        )
+        await query.edit_message_text(t("session_expired"))
         return
 
-    emoji, ad = MODLAR[mod]
-    await query.edit_message_text(f"🤖 Özetleniyor… ({emoji} {ad})")
+    emoji, ad = MOD_EMOJI[mod], _mod_ad(mod)
+    await query.edit_message_text(t("summarizing", emoji=emoji, ad=ad))
     try:
         ozet = await asyncio.to_thread(ozetle, veri["baslik"], veri["konusma"], mod)
     except Exception as e:
         msg = str(e)
         yeniden = InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔄 Tekrar dene", callback_data=f"mod:{key}:{mod}"),
-            KAPAT_BTN,
+            InlineKeyboardButton(t("btn_retry"), callback_data=f"mod:{key}:{mod}"),
+            kapat_btn(),
         ]])
         if any(k in msg for k in ("429", "503", "502", "yoğun", "rate", "high demand")):
-            await query.edit_message_text(
-                "⚠️ Model şu an yoğun. Biraz sonra tekrar dene.", reply_markup=yeniden
-            )
+            await query.edit_message_text(t("model_busy"), reply_markup=yeniden)
         else:
             await query.edit_message_text(
-                f"⚠️ Özetlenemedi: {html.escape(msg[:300])}", reply_markup=yeniden
+                t("summarize_failed", hata=html.escape(msg[:300])), reply_markup=yeniden
             )
         return
 
@@ -634,19 +647,15 @@ async def _ozeti_uret_goster(query, key, mod):
     if _bos_mu(ozet):
         kb = _diger_modlar_kb(key, mod, veri["okundu"], bos=True)
         await query.edit_message_text(
-            f"📋 <b>{baslik_g}</b>\n\n"
-            f"ℹ️ <i>Bu modda ({emoji} {ad}) kayda değer bir şey çıkmadı.</i>\n"
-            "Başka bir modda denemek ister misin?",
+            t("mode_empty", baslik=baslik_g, emoji=emoji, ad=ad),
             reply_markup=kb, parse_mode="HTML",
         )
         return
 
     if veri["toplam"] is not None:
-        sayac = (f"\n\n━━━━━━━━━\n"
-                 f"📊 {veri['sayi']} metin mesajı · {emoji} {ad} · "
-                 f"toplam {veri['toplam']} okunmamış")
+        sayac = t("counter_full", sayi=veri["sayi"], emoji=emoji, ad=ad, toplam=veri["toplam"])
     else:
-        sayac = f"\n\n━━━━━━━━━\n📊 {veri['sayi']} metin mesajı · {emoji} {ad}"
+        sayac = t("counter_simple", sayi=veri["sayi"], emoji=emoji, ad=ad)
 
     kb = _diger_modlar_kb(key, mod, veri["okundu"], bos=False)
     govde = _bicim(ozet)
@@ -676,7 +685,7 @@ async def _soru_cevap_dosyasi(query, context, key):
     """Grup sahibinin okunmamış cevaplarını soru-cevap dosyasına çıkarır."""
     veri = ONBELLEK.get(key)
     if veri is None:
-        await query.edit_message_text("⌛ Bu oturum artık geçerli değil. /ozet ile tekrar başla.")
+        await query.edit_message_text(t("session_expired"))
         return
     grup_id = veri.get("grup_id")
     topic_id = veri.get("topic_id")
@@ -684,22 +693,19 @@ async def _soru_cevap_dosyasi(query, context, key):
 
     dialog = await grup_dialog_bul(grup_id)
     if dialog is None:
-        await query.edit_message_text("Grup bulunamadı.")
+        await query.edit_message_text(t("group_not_found"))
         return
 
-    await query.edit_message_text("🔎 Grup sahibi tespit ediliyor…")
+    await query.edit_message_text(t("qa_detect_owner"))
     owner_id = await grup_sahibi_bul(dialog.entity)
     if owner_id is None:
-        await query.edit_message_text(
-            "⚠️ Grup sahibi (kurucu) tespit edilemedi. "
-            "Bu grup için soru-cevap çıkarımı yapamıyorum."
-        )
+        await query.edit_message_text(t("qa_owner_not_found"))
         return
 
-    await query.edit_message_text("📥 Grup sahibinin mesajları taranıyor…")
+    await query.edit_message_text(t("qa_scan_owner"))
     sahip_mesajlari = await _sahip_okunmamis_mesajlar(dialog, topic_id, owner_id)
     if not sahip_mesajlari:
-        await query.edit_message_text("ℹ️ Grup sahibinin okunmamış mesajı yok.")
+        await query.edit_message_text(t("qa_owner_no_unread"))
         return
 
     # Yanıt verilen soruları toplu çek
@@ -727,27 +733,27 @@ async def _soru_cevap_dosyasi(query, context, key):
     os.makedirs(resim_kls, exist_ok=True)
 
     # Resimleri indir (hem cevaplar hem sorular)
-    await query.edit_message_text("🖼 Resimler indiriliyor…")
+    await query.edit_message_text(t("qa_downloading_images"))
     indir_listesi = list(sahip_mesajlari) + [q for q in sorular.values() if q is not None]
     resim_haritasi = await _resimleri_indir(indir_listesi, resim_kls)
 
-    await query.edit_message_text("📝 Dosya hazırlanıyor…")
+    await query.edit_message_text(t("qa_preparing_file"))
     md, cift = _soru_cevap_md(baslik, sahip_mesajlari, sorular, topic_id, resim_haritasi)
 
     dosya = os.path.join(export_kls, f"{guvenli}.md")
     with open(dosya, "w", encoding="utf-8") as f:
         f.write(md)
 
-    # Telegram'dan belge olarak gönder (metin için; resimler Mac klasöründe)
-    await query.edit_message_text("📤 Dosya gönderiliyor…")
+    # Telegram'dan belge olarak gönder (metin için; resimler bilgisayardaki klasörde)
+    await query.edit_message_text(t("qa_sending_file"))
     try:
         with open(dosya, "rb") as f:
             await context.bot.send_document(
                 chat_id=SAHIP_ID, document=f, filename=os.path.basename(dosya),
-                caption=f"📄 {baslik} — {cift} soru-cevap, {len(sahip_mesajlari)} mesaj",
+                caption=t("qa_caption", baslik=baslik, cift=cift, sayi=len(sahip_mesajlari)),
             )
     except Exception as e:
-        await query.edit_message_text(f"⚠️ Dosya gönderilemedi: {html.escape(str(e)[:200])}")
+        await query.edit_message_text(t("qa_send_failed", hata=html.escape(str(e)[:200])))
         return
 
     # Okundu yap
@@ -766,10 +772,7 @@ async def _soru_cevap_dosyasi(query, context, key):
 
     resim_sayisi = sum(len(v) for v in resim_haritasi.values())
     await query.edit_message_text(
-        f"✅ <b>Soru-Cevap dosyası hazır</b>\n"
-        f"📄 {cift} soru-cevap çifti · 🖼 {resim_sayisi} resim\n"
-        f"<i>Resimleri görmek için Mac'te bu klasörü aç:</i>\n"
-        f"<code>{html.escape(export_kls)}</code>",
+        t("qa_ready", cift=cift, resim=resim_sayisi, yol=html.escape(export_kls)),
         parse_mode="HTML",
     )
 
@@ -780,27 +783,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not sadece_sahip(update):
         return
     kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📋 Özet Al", callback_data="menu:ozet")
+        InlineKeyboardButton(t("btn_get_summary"), callback_data="menu:ozet")
     ]])
-    await update.message.reply_text(
-        "👋 <b>Mesaj Özetleyici</b>\n\n"
-        "Okunmamış grup ve forum konularını senin için özetlerim.\n\n"
-        "📋  <b>Özet Al</b> — okunmamış grupları listeler\n"
-        "👆  Grup → (konu) → mod seç → özet\n"
-        "✅  <b>Okundu yap</b> ile temizle\n\n"
-        "Modlar: 📝 Genel · 💡 Bilgi & ipucu · 🎯 Aksiyon\n\n"
-        "Alttaki butona ya da /ozet komutuna bas.",
-        reply_markup=kb, parse_mode="HTML",
-    )
+    await update.message.reply_text(t("start"), reply_markup=kb, parse_mode="HTML")
 
 
 async def ozet_komut(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not sadece_sahip(update):
         return
-    bekle = await update.message.reply_text("🔎 Gruplar taranıyor…")
+    bekle = await update.message.reply_text(t("scanning_groups"))
     text, kb = await _grup_listesi_kb()
     if text is None:
-        await bekle.edit_text("✅ Okunmamış mesajı olan grup yok. 🎉")
+        await bekle.edit_text(t("no_unread_groups"))
         return
     await bekle.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
@@ -825,9 +819,9 @@ async def _otomatik_ekrani_kb():
         if is_forum(g):
             # Bu grupta kaç konu seçili?
             sayi = sum(1 for (gid, tid) in secili_konular if gid == g.id)
-            etiket = f"🗂 {g.name}  ▶︎"
+            etiket = t("auto_forum_entry", name=g.name)
             if sayi:
-                etiket += f"  ({sayi} konu seçili)"
+                etiket += t("auto_topics_count", n=sayi)
             butonlar.append([InlineKeyboardButton(etiket, callback_data=f"oto_grp:{g.id}")])
         else:
             isaret = "✅" if g.id in secili_gruplar else "⬜"
@@ -836,19 +830,16 @@ async def _otomatik_ekrani_kb():
             )])
 
     durum_btn = InlineKeyboardButton(
-        "🟢 Otomatik: AÇIK (kapat)" if acik else "🔴 Otomatik: KAPALI (aç)",
+        t("auto_toggle_on") if acik else t("auto_toggle_off"),
         callback_data="oto_durum",
     )
     butonlar.insert(0, [durum_btn])
-    butonlar.append([KAPAT_BTN])
+    butonlar.append([kapat_btn()])
 
-    durum_yazi = "🟢 açık" if acik else "🔴 kapalı"
-    toplam_secili = len(secili_gruplar) + len(secili_konular)
-    text = (f"⏰ <b>Otomatik Günlük Özet</b>\n"
-            f"Durum: {durum_yazi} · Her sabah 09:00\n"
-            f"Seçili: {len(secili_gruplar)} grup + {len(secili_konular)} konu\n\n"
-            f"<i>💬 normal grup: dokun = seç · 🗂 forum: dokun = konulara gir</i>")
-    return text, InlineKeyboardMarkup(butonlar)
+    durum_yazi = t("auto_on") if acik else t("auto_off")
+    metin = t("auto_header", durum=durum_yazi,
+              g=len(secili_gruplar), k=len(secili_konular))
+    return metin, InlineKeyboardMarkup(butonlar)
 
 
 async def _otomatik_konu_kb(grup_id):
@@ -858,30 +849,29 @@ async def _otomatik_konu_kb(grup_id):
 
     dialog = await grup_dialog_bul(grup_id)
     if dialog is None:
-        return "Grup bulunamadı.", InlineKeyboardMarkup([[KAPAT_BTN]])
+        return t("group_not_found"), InlineKeyboardMarkup([[kapat_btn()]])
 
     topicler = await topiclari_getir(dialog.entity)
     butonlar = []
-    for t in topicler:
-        isaret = "✅" if (grup_id, t.id) in secili_konular else "⬜"
+    for tp in topicler:
+        isaret = "✅" if (grup_id, tp.id) in secili_konular else "⬜"
         butonlar.append([InlineKeyboardButton(
-            f"{isaret} {t.title}", callback_data=f"oto_konu:{grup_id}:{t.id}"
+            f"{isaret} {tp.title}", callback_data=f"oto_konu:{grup_id}:{tp.id}"
         )])
     butonlar.append([
-        InlineKeyboardButton("⬅️ Geri", callback_data="oto_geri"), KAPAT_BTN
+        InlineKeyboardButton(t("btn_back"), callback_data="oto_geri"), kapat_btn()
     ])
 
-    text = (f"🗂 <b>{html.escape(dialog.name)}</b>\n"
-            f"<i>Otomatiğe almak istediğin konuları seç.</i>")
-    return text, InlineKeyboardMarkup(butonlar)
+    metin = t("auto_topic_header", name=html.escape(dialog.name))
+    return metin, InlineKeyboardMarkup(butonlar)
 
 
 async def otomatik_komut(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not sadece_sahip(update):
         return
-    bekle = await update.message.reply_text("🔎 Gruplar taranıyor…")
-    text, kb = await _otomatik_ekrani_kb()
-    await bekle.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    bekle = await update.message.reply_text(t("scanning_groups"))
+    metin, kb = await _otomatik_ekrani_kb()
+    await bekle.edit_text(metin, reply_markup=kb, parse_mode="HTML")
 
 
 # ---------------- Otomatik özet (Parça 2: günlük bülten) ----------------
@@ -891,21 +881,23 @@ async def _bulten_gonder(bot, baslik, mesajlar, chat_id, topic_id=None):
     # Son 24 saatte mesaj yoksa kısa not
     if not mesajlar:
         await bot.send_message(
-            SAHIP_ID,
-            f"📰 <b>{html.escape(baslik)}</b>\n\nℹ️ Son 24 saatte mesaj yok.",
-            parse_mode="HTML",
+            SAHIP_ID, t("bulletin_no_msgs", baslik=html.escape(baslik)), parse_mode="HTML",
         )
         return False
 
     konusma = "\n".join(f"[ID:{m.id}] {gonderen_adi(m)}: {m.text}" for m in mesajlar)
     try:
         ham = await asyncio.to_thread(
-            _ai_cagir, BULTEN_PROMPT.format(baslik=baslik, konusma=konusma)
+            _ai_cagir,
+            BULTEN_PROMPT.format(
+                baslik=baslik, konusma=konusma,
+                dil=i18n.PROMPT_LANG.get(i18n.dil(), "English"),
+            ),
         )
     except Exception as e:
         await bot.send_message(
             SAHIP_ID,
-            f"📰 <b>{html.escape(baslik)}</b>\n\n⚠️ Özetlenemedi: {html.escape(str(e)[:200])}",
+            t("bulletin_failed", baslik=html.escape(baslik), hata=html.escape(str(e)[:200])),
             parse_mode="HTML",
         )
         return False
@@ -915,7 +907,7 @@ async def _bulten_gonder(bot, baslik, mesajlar, chat_id, topic_id=None):
     # Kritik mesaj butonları
     btn_satir = []
     for i, mid in enumerate(kritik_ids, 1):
-        etiket = "🔗 Önemli mesaja git" if len(kritik_ids) == 1 else f"🔗 Önemli #{i}"
+        etiket = t("btn_critical_single") if len(kritik_ids) == 1 else t("btn_critical_multi", i=i)
         btn_satir.append(InlineKeyboardButton(etiket, url=_msg_link(chat_id, mid, topic_id)))
     kb = InlineKeyboardMarkup([btn_satir]) if btn_satir else None
 
@@ -951,10 +943,7 @@ async def _bulteni_calistir(bot, zorla=False):
     konular = [tuple(x) for x in ayar.get("konular", [])]
 
     if zorla and not gruplar and not konular:
-        await bot.send_message(
-            SAHIP_ID,
-            "ℹ️ Otomatik özet için hiç grup/konu seçili değil. /otomatik ile seç.",
-        )
+        await bot.send_message(SAHIP_ID, t("no_groups_selected"))
         return
 
     # Normal gruplar
@@ -1036,23 +1025,23 @@ async def bulten_telafi_job(context: ContextTypes.DEFAULT_TYPE):
 async def test_bulten_komut(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not sadece_sahip(update):
         return
-    await update.message.reply_text("🧪 Test bülteni çalıştırılıyor… (biraz sürebilir)")
+    await update.message.reply_text(t("test_running"))
     await _bulteni_calistir(context.bot, zorla=True)
-    await update.message.reply_text("✅ Test bülteni tamamlandı.")
+    await update.message.reply_text(t("test_done"))
 
 
 def _sure_metni(delta):
-    """timedelta'yı 'X gün Y saat Z dakika' gibi okunur metne çevirir."""
+    """timedelta'yı okunur süre metnine çevirir (dile göre)."""
     saniye = int(delta.total_seconds())
     gun, kalan = divmod(saniye, 86400)
     saat_, kalan = divmod(kalan, 3600)
     dakika, _ = divmod(kalan, 60)
     parcalar = []
     if gun:
-        parcalar.append(f"{gun} gün")
+        parcalar.append(t("dur_days", n=gun))
     if saat_:
-        parcalar.append(f"{saat_} saat")
-    parcalar.append(f"{dakika} dakika")
+        parcalar.append(t("dur_hours", n=saat_))
+    parcalar.append(t("dur_minutes", n=dakika))
     return " ".join(parcalar)
 
 
@@ -1061,17 +1050,16 @@ async def durum_komut(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     ayar = ayarlari_oku()
     acik = ayar.get("otomatik_acik", False)
-    g_sayi = len(ayar.get("gruplar", []))
-    k_sayi = len(ayar.get("konular", []))
-    son = ayar.get("son_bulten", "henüz çalışmadı")
-    sure = _sure_metni(datetime.now() - BASLANGIC)
+    son = ayar.get("son_bulten") or t("last_never")
     await update.message.reply_text(
-        "🤖 <b>Bot Durumu</b>\n\n"
-        f"⏱ Çalışma süresi: {sure}\n"
-        f"⏰ Otomatik: {'🟢 açık' if acik else '🔴 kapalı'} (her sabah 09:00)\n"
-        f"📌 Seçili: {g_sayi} grup + {k_sayi} konu\n"
-        f"📰 Son bülten: {son}\n"
-        f"🧠 Model: {html.escape(OPENROUTER_MODEL)}",
+        t("status",
+          sure=_sure_metni(datetime.now() - BASLANGIC),
+          durum=t("auto_on") if acik else t("auto_off"),
+          g=len(ayar.get("gruplar", [])),
+          k=len(ayar.get("konular", [])),
+          son=html.escape(str(son)),
+          lang=i18n.LANGS.get(i18n.dil(), i18n.dil()),
+          model=html.escape(OPENROUTER_MODEL)),
         parse_mode="HTML",
     )
 
@@ -1081,14 +1069,14 @@ async def _okundu_isaretle(inner):
     parts = inner.split(":")
     dialog = await grup_dialog_bul(int(parts[1]))
     if dialog is None:
-        return False, "Grup bulunamadı."
+        return False, t("group_not_found")
     try:
         if parts[0] == "okundu":
             await tele.send_read_acknowledge(dialog.entity)
         else:  # oktop
             topic_id = int(parts[2])
             topicler = await topiclari_getir(dialog.entity)
-            topic = next((t for t in topicler if t.id == topic_id), None)
+            topic = next((tp for tp in topicler if tp.id == topic_id), None)
             read_max = topic.top_message if topic else 0
             await tele(ReadDiscussionRequest(
                 peer=dialog.entity, msg_id=topic_id, read_max_id=read_max
@@ -1101,19 +1089,19 @@ async def _okundu_isaretle(inner):
 async def buton_tiklandi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not (query.from_user and query.from_user.id == SAHIP_ID):
-        await query.answer("Bu bot sana ait değil.", show_alert=True)
+        await query.answer(t("not_your_bot"), show_alert=True)
         return
     await query.answer()
     veri = query.data
 
     # Menü / geri: grup listesi
     if veri in ("menu:ozet", "geri"):
-        await query.edit_message_text("🔎 Gruplar taranıyor…")
-        text, kb = await _grup_listesi_kb()
-        if text is None:
-            await query.edit_message_text("✅ Okunmamış mesajı olan grup yok. 🎉")
+        await query.edit_message_text(t("scanning_groups"))
+        metin, kb = await _grup_listesi_kb()
+        if metin is None:
+            await query.edit_message_text(t("no_unread_groups"))
         else:
-            await query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
+            await query.edit_message_text(metin, reply_markup=kb, parse_mode="HTML")
         return
 
     # Kapat
@@ -1121,7 +1109,7 @@ async def buton_tiklandi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await query.delete_message()
         except Exception:
-            await query.edit_message_text("❌ Kapatıldı.")
+            await query.edit_message_text(t("closed"))
         return
 
     # Otomatik: grup seç/çıkar (normal grup)
@@ -1142,9 +1130,9 @@ async def buton_tiklandi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Otomatik: forum grubuna gir (konuları göster)
     if veri.startswith("oto_grp:"):
         grup_id = int(veri.split(":", 1)[1])
-        await query.edit_message_text("🔎 Konular taranıyor…")
-        text, kb = await _otomatik_konu_kb(grup_id)
-        await query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
+        await query.edit_message_text(t("scanning_topics"))
+        metin, kb = await _otomatik_konu_kb(grup_id)
+        await query.edit_message_text(metin, reply_markup=kb, parse_mode="HTML")
         return
 
     # Otomatik: konu seç/çıkar
@@ -1192,33 +1180,30 @@ async def buton_tiklandi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         grup_id = int(veri.split(":", 1)[1])
         dialog = await grup_dialog_bul(grup_id)
         if dialog is None:
-            await query.edit_message_text("Grup bulunamadı.")
+            await query.edit_message_text(t("group_not_found"))
             return
 
         if is_forum(dialog):
-            await query.edit_message_text("🔎 Konular taranıyor…")
+            await query.edit_message_text(t("scanning_topics"))
             topicler = await topiclari_getir(dialog.entity)
-            unread = [t for t in topicler if getattr(t, "unread_count", 0) > 0]
+            unread = [tp for tp in topicler if getattr(tp, "unread_count", 0) > 0]
             if not unread:
                 await query.edit_message_text(
-                    f"✅ <b>{html.escape(dialog.name)}</b> içinde okunmamış konu yok.",
-                    parse_mode="HTML",
+                    t("no_unread_topics", name=html.escape(dialog.name)), parse_mode="HTML",
                 )
                 return
             butonlar = [
-                [InlineKeyboardButton(f"💬 {t.title}  ·  {t.unread_count}",
-                                      callback_data=f"top:{grup_id}:{t.id}")]
-                for t in unread
+                [InlineKeyboardButton(t("topic_btn", title=tp.title, n=tp.unread_count),
+                                      callback_data=f"top:{grup_id}:{tp.id}")]
+                for tp in unread
             ]
-            butonlar.append([
-                InlineKeyboardButton("⬅️ Geri", callback_data="geri"), KAPAT_BTN
-            ])
+            butonlar.append([geri_btn(), kapat_btn()])
             await query.edit_message_text(
-                f"🗂 <b>{html.escape(dialog.name)}</b>\n<i>Hangi konuyu özetleyeyim?</i>",
+                t("topic_pick_header", name=html.escape(dialog.name)),
                 reply_markup=InlineKeyboardMarkup(butonlar), parse_mode="HTML",
             )
         else:
-            await query.edit_message_text("📥 Mesajlar çekiliyor…")
+            await query.edit_message_text(t("fetching_msgs"))
             mesajlar = await okunmamis_mesajlar(dialog)
             await _mod_secimi_goster(
                 query, dialog.name, mesajlar, f"okundu:{grup_id}", dialog.unread_count,
@@ -1231,14 +1216,14 @@ async def buton_tiklandi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         grup_id, topic_id = int(gid), int(tid)
         dialog = await grup_dialog_bul(grup_id)
         if dialog is None:
-            await query.edit_message_text("Grup bulunamadı.")
+            await query.edit_message_text(t("group_not_found"))
             return
         topicler = await topiclari_getir(dialog.entity)
-        topic = next((t for t in topicler if t.id == topic_id), None)
+        topic = next((tp for tp in topicler if tp.id == topic_id), None)
         if topic is None:
-            await query.edit_message_text("Konu bulunamadı.")
+            await query.edit_message_text(t("topic_not_found"))
             return
-        await query.edit_message_text("📥 Mesajlar çekiliyor…")
+        await query.edit_message_text(t("fetching_msgs"))
         mesajlar = await topic_unread_mesajlar(dialog.entity, topic)
         baslik = f"{dialog.name} › {topic.title}"
         await _mod_secimi_goster(
@@ -1252,13 +1237,10 @@ async def buton_tiklandi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ok, hata = await _okundu_isaretle(veri)
         eski = query.message.text_html if query.message.text else ""
         if ok:
-            await query.edit_message_text(
-                eski + "\n\n✅ <b>Okundu olarak işaretlendi.</b>", parse_mode="HTML"
-            )
+            await query.edit_message_text(eski + t("marked_read"), parse_mode="HTML")
         else:
             await query.edit_message_text(
-                eski + f"\n\n⚠️ Okundu işaretlenemedi: {html.escape(hata)}",
-                parse_mode="HTML",
+                eski + t("mark_read_failed", hata=html.escape(hata)), parse_mode="HTML",
             )
 
     # Okundu & kapat (mesajı sil)
@@ -1268,23 +1250,50 @@ async def buton_tiklandi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await query.delete_message()
             except Exception:
-                await query.edit_message_text("✅ Okundu olarak işaretlendi.")
+                await query.edit_message_text(t("marked_read").strip())
         else:
             eski = query.message.text_html if query.message.text else ""
             await query.edit_message_text(
-                eski + f"\n\n⚠️ Okundu işaretlenemedi: {html.escape(hata)}",
-                parse_mode="HTML",
+                eski + t("mark_read_failed", hata=html.escape(hata)), parse_mode="HTML",
+            )
+
+    # Dil seçildi
+    elif veri.startswith("setdil:"):
+        yeni = veri.split(":", 1)[1]
+        if yeni in i18n.LANGS:
+            i18n.set_dil(yeni)
+            ay = ayarlari_oku(); ay["dil"] = yeni; ayarlari_yaz(ay)
+            await _post_init(context.application)  # komut açıklamalarını da güncelle
+            await query.edit_message_text(
+                t("lang_changed", lang=i18n.LANGS[yeni]), parse_mode="HTML"
             )
 
 
 # ======================= Başlatma =======================
 
+async def dil_komut(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not sadece_sahip(update):
+        return
+    simdiki = i18n.dil()
+    butonlar = [
+        [InlineKeyboardButton(
+            ("✅ " if kod == simdiki else "") + ad, callback_data=f"setdil:{kod}"
+        )]
+        for kod, ad in i18n.LANGS.items()
+    ]
+    butonlar.append([kapat_btn()])
+    await update.message.reply_text(
+        t("lang_header"), reply_markup=InlineKeyboardMarkup(butonlar), parse_mode="HTML",
+    )
+
+
 async def _post_init(app):
     await app.bot.set_my_commands([
-        BotCommand("ozet", "📋 Okunmamış grupları özetle"),
-        BotCommand("otomatik", "⏰ Otomatik günlük özet ayarları"),
-        BotCommand("durum", "🤖 Bot durumu"),
-        BotCommand("start", "👋 Başla / yardım"),
+        BotCommand("ozet", t("cmd_ozet")),
+        BotCommand("otomatik", t("cmd_otomatik")),
+        BotCommand("dil", t("cmd_dil")),
+        BotCommand("durum", t("cmd_durum")),
+        BotCommand("start", t("cmd_start")),
     ])
 
 
@@ -1303,6 +1312,9 @@ def main():
             print(f"HATA: {ad} ortam değişkeni ayarlı değil.")
             sys.exit(1)
 
+    # Kayıtlı dili yükle (varsayılan: en)
+    i18n.set_dil(ayarlari_oku().get("dil", "en"))
+
     tele.start()
     print("Telethon hazır. Bot başlatılıyor... (durdurmak için Ctrl+C)")
     log.info("Bot başlatıldı.")
@@ -1312,6 +1324,7 @@ def main():
     app.add_handler(CommandHandler("ozet", ozet_komut))
     app.add_handler(CommandHandler("otomatik", otomatik_komut))
     app.add_handler(CommandHandler("test_bulten", test_bulten_komut))
+    app.add_handler(CommandHandler("dil", dil_komut))
     app.add_handler(CommandHandler("durum", durum_komut))
     app.add_handler(CallbackQueryHandler(buton_tiklandi))
     app.add_error_handler(_hata_yakala)

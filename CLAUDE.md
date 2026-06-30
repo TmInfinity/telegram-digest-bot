@@ -80,15 +80,28 @@ kullanan, kişisel/self-host bir Telegram mesaj özetleme sistemi. Tek kullanıc
   OPENROUTER_MODEL, TG_BOT_TOKEN, TG_CHAT_ID`. `python-dotenv` ile yüklenir.
   (`OPENROUTER_MODEL` zorunlu değil; yoksa kod varsayılan slug'a düşer.)
 - `ayarlar.json`: `{otomatik_acik, gruplar:[id...], konular:[[grup_id,konu_id]...],
-  son_bulten, son_bulten_tarih, son_mod}`. `son_bulten_tarih` (YYYY-MM-DD) günde tek
-  bülten + uyku telafisi için; `son_mod` mod hafızası için.
+  son_bulten, son_bulten_tarih, son_mod, dil}`. `son_bulten_tarih` (YYYY-MM-DD) günde
+  tek bülten + uyku telafisi için; `son_mod` mod hafızası; `dil` arayüz/özet dili (en/tr/ru/tk).
 - `ozet_session.session`: Telethon oturumu — HESABIN TAM ERİŞİMİ, asla paylaşma/commit etme.
 - Loglar: `app.log` (RotatingFileHandler, tarih damgalı, 1MB×3 yedek). Eski
   `bot.log`/`bot.error.log` launchd çıktısıdır (çökme için).
 
+## Çok dillilik (i18n)
+
+- Tüm kullanıcı-yüzü metinleri `i18n.py`'de `STRINGS[dil][anahtar]` sözlüğünde. Diller:
+  `en` (varsayılan), `tr`, `ru`, `tk`. `i18n.t("anahtar", **kw)` çağrılır; eksik anahtar
+  İngilizce'ye düşer. Geçerli dil global (`i18n.set_dil`), tek kullanıcı olduğu için yeterli.
+- **Buton/komut metinleri t() ile ÇAĞRI ANINDA üretilir** (modül sabiti DEĞİL), yoksa dil
+  değişince çevrilmez. `kapat_btn()`/`geri_btn()` fonksiyonları bu yüzden var.
+- AI prompt'ları İngilizce şablon; çıktı dili `{dil}` (`i18n.PROMPT_LANG`) ile enjekte edilir.
+  Boş çıktı işareti dilden bağımsız sabit: `BOS_ISARET = "__EMPTY__"` (`_bos_mu`).
+- Başlangıçta dil `ayarlar.json`'dan yüklenir; `/dil` ile değiştirilir (`setdil:<kod>`).
+- DİKKAT: Telethon konu döngülerinde değişken adı `t` ÇEVİRİ FONKSİYONU `t` ile çakışır.
+  Blok `for t in ...:` döngülerinde `tp` kullan (comprehension'lar sızdırmaz, sorun değil).
+
 ## Komutlar
 
-`/ozet`, `/otomatik`, `/durum`, `/test_bulten` (gizli, bülteni hemen çalıştırır), `/start`.
+`/ozet`, `/otomatik`, `/dil`, `/durum`, `/test_bulten` (gizli, bülteni hemen çalıştırır), `/start`.
 
 ---
 
