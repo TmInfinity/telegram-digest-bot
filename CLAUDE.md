@@ -33,13 +33,23 @@ the digest immediately.
 
 ## Running in the background (macOS)
 
-A `launchd` template is provided at `deploy/com.telegram-digest.plist.example`. After a
-code change, reload the service:
+A `launchd` template is provided at `deploy/com.telegram-digest.plist.example` (label
+`com.telegram-digest`). The actual installed service on this machine uses the label
+**`com.maksat.telegramozet`** (plist at `~/Library/LaunchAgents/com.maksat.telegramozet.plist`).
+Confirm the live label with `launchctl list | grep -i telegram` before touching it — the
+example label and the installed label differ.
+
+After a code change, restart the running service in place:
 
 ```
-launchctl bootout   gui/$(id -u)/com.telegram-digest
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.telegram-digest.plist
+launchctl kickstart -k gui/$(id -u)/com.maksat.telegramozet
 ```
+
+`kickstart -k` kills the current instance and starts a fresh one (avoids the
+`bootout`/`bootstrap` "No such process" / "Input/output error" pitfalls when the label
+doesn't match). On restart the bot tightens `*.session`, `ayarlar.json`, and `app.log`
+to `600`; a couple of `Event loop is closed` lines at the top of `app.log` are just the
+old instance shutting down — harmless.
 
 Don't run a second instance (e.g. `uv run python bot.py`) while the launchd copy is
 active — the bot token would conflict.
