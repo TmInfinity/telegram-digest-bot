@@ -4,6 +4,7 @@
 > messages and turns them into clean, AI-generated summaries — on demand or as an
 > automatic daily digest.
 
+[![CI](https://github.com/TmInfinity/telegram-digest-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/TmInfinity/telegram-digest-bot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)
@@ -60,7 +61,7 @@ management · `launchd` for background scheduling on macOS.
 
 ### 2. Install
 ```bash
-git clone https://github.com/YOUR_USERNAME/telegram-digest-bot.git
+git clone https://github.com/TmInfinity/telegram-digest-bot.git
 cd telegram-digest-bot
 uv sync
 ```
