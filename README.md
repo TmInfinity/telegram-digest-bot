@@ -107,6 +107,11 @@ follow the comments inside it.
   language, last mode). Created automatically.
 - `app.log` — rotating operational log.
 
+## Documentation
+
+Design notes and key decisions are in [ARCHITECTURE.md](ARCHITECTURE.md).
+Contribution guidelines are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Security & disclaimer
 
 Please read [SECURITY.md](SECURITY.md). In short: the session file is account-level
